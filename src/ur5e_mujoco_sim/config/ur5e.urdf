@@ -1,0 +1,107 @@
+<?xml version="1.0"?>
+<robot name="ur5e">
+  <material name="ur_blue"><color rgba="0.49 0.68 0.80 1"/></material>
+  <material name="dark"><color rgba="0.12 0.12 0.12 1"/></material>
+  <link name="world"/>
+  <!-- MJCF base frame is at z=0.45 m, exactly the tabletop surface. The base
+       geometry extends upward from that frame, as in the MuJoCo robot mesh. -->
+  <link name="base_link">
+    <visual><origin xyz="0 0 0.05"/><geometry><cylinder radius="0.09" length="0.10"/></geometry><material name="dark"/></visual>
+    <collision><origin xyz="0 0 0.05"/><geometry><cylinder radius="0.09" length="0.10"/></geometry></collision>
+  </link>
+  <!-- MuJoCo's ur5e/base quat="0 0 0 -1" is wxyz: a pi rotation about Z. -->
+  <joint name="world_to_base" type="fixed"><parent link="world"/><child link="base_link"/><origin xyz="0 0 0.45" rpy="0 0 3.14159265"/></joint>
+  <link name="shoulder_link"><visual><origin xyz="0 0 0.08"/><geometry><cylinder radius="0.075" length="0.16"/></geometry><material name="ur_blue"/></visual><collision><origin xyz="0 0 0.08"/><geometry><cylinder radius="0.075" length="0.16"/></geometry></collision></link>
+  <joint name="shoulder_pan_joint" type="revolute"><parent link="base_link"/><child link="shoulder_link"/><origin xyz="0 0 0.163"/><axis xyz="0 0 1"/><limit lower="-6.283" upper="6.283" effort="150" velocity="3.14"/></joint>
+  <link name="upper_arm_link"><visual><origin xyz="-0.2125 0 0" rpy="0 1.5707963 0"/><geometry><cylinder radius="0.055" length="0.425"/></geometry><material name="ur_blue"/></visual><collision><origin xyz="-0.2125 0 0" rpy="0 1.5707963 0"/><geometry><cylinder radius="0.055" length="0.425"/></geometry></collision></link>
+  <joint name="shoulder_lift_joint" type="revolute"><parent link="shoulder_link"/><child link="upper_arm_link"/><origin xyz="0 0.138 0" rpy="0 1.5707963 0"/><axis xyz="0 1 0"/><limit lower="-6.283" upper="6.283" effort="150" velocity="3.14"/></joint>
+  <link name="forearm_link"><visual><origin xyz="-0.1961 0 0" rpy="0 1.5707963 0"/><geometry><cylinder radius="0.045" length="0.3922"/></geometry><material name="dark"/></visual><collision><origin xyz="-0.1961 0 0" rpy="0 1.5707963 0"/><geometry><cylinder radius="0.045" length="0.3922"/></geometry></collision></link>
+  <joint name="elbow_joint" type="revolute"><parent link="upper_arm_link"/><child link="forearm_link"/><origin xyz="0 -0.131 0.425"/><axis xyz="0 1 0"/><limit lower="-3.142" upper="3.142" effort="150" velocity="3.14"/></joint>
+  <link name="wrist_1_link">
+    <visual><geometry><cylinder radius="0.04" length="0.12"/></geometry><material name="ur_blue"/></visual>
+    <!-- Match the MuJoCo wrist-1 collision capsule: axis along local y, centered at y=0.05 m. -->
+    <collision><origin xyz="0 0.05 0" rpy="1.5707963 0 0"/><geometry><cylinder radius="0.04" length="0.14"/></geometry></collision>
+    <collision><origin xyz="0 -0.02 0"/><geometry><sphere radius="0.04"/></geometry></collision>
+    <collision><origin xyz="0 0.12 0"/><geometry><sphere radius="0.04"/></geometry></collision>
+  </link>
+  <joint name="wrist_1_joint" type="revolute"><parent link="forearm_link"/><child link="wrist_1_link"/><origin xyz="0 0 0.392" rpy="0 1.5707963 0"/><axis xyz="0 1 0"/><limit lower="-6.283" upper="6.283" effort="28" velocity="6.28"/></joint>
+  <link name="wrist_2_link"><visual><origin xyz="0 0 0.05"/><geometry><cylinder radius="0.04" length="0.1"/></geometry><material name="dark"/></visual><collision><origin xyz="0 0 0.05"/><geometry><cylinder radius="0.04" length="0.1"/></geometry></collision></link>
+  <joint name="wrist_2_joint" type="revolute"><parent link="wrist_1_link"/><child link="wrist_2_link"/><origin xyz="0 0.127 0"/><axis xyz="0 0 1"/><limit lower="-6.283" upper="6.283" effort="28" velocity="6.28"/></joint>
+  <link name="wrist_3_link">
+    <visual><origin xyz="0 0 0.05"/><geometry><cylinder radius="0.035" length="0.1"/></geometry><material name="ur_blue"/></visual>
+    <!-- Match the MuJoCo wrist-3 collision capsule: axis along local y, centered at y=0.08 m. -->
+    <collision><origin xyz="0 0.08 0" rpy="1.5707963 0 0"/><geometry><cylinder radius="0.04" length="0.04"/></geometry></collision>
+    <collision><origin xyz="0 0.06 0"/><geometry><sphere radius="0.04"/></geometry></collision>
+    <collision><origin xyz="0 0.10 0"/><geometry><sphere radius="0.04"/></geometry></collision>
+  </link>
+  <joint name="wrist_3_joint" type="revolute"><parent link="wrist_2_link"/><child link="wrist_3_link"/><origin xyz="0 0 0.1"/><axis xyz="0 1 0"/><limit lower="-6.283" upper="6.283" effort="28" velocity="6.28"/></joint>
+  <!-- tool0 is the MuJoCo Robotiq pinch site, not a solid tool body. -->
+  <link name="tool0"/>
+  <joint name="wrist_3_to_tool0" type="fixed"><parent link="wrist_3_link"/><child link="tool0"/><origin xyz="0 0.2558 0" rpy="0 -1.5707963 -1.5707963"/></joint>
+  <!-- Approximate collision geometry of the fixed gripper housing and pads.
+       The pinch frame is at the tips; the housing and fingers extend along -Z. -->
+  <link name="gripper_base_link">
+    <visual><origin xyz="0 0 -0.055"/><geometry><box size="0.085 0.12 0.11"/></geometry><material name="dark"/></visual>
+    <collision><origin xyz="0 0 -0.055"/><geometry><box size="0.085 0.12 0.11"/></geometry></collision>
+  </link>
+  <joint name="tool0_to_gripper_base" type="fixed"><parent link="tool0"/><child link="gripper_base_link"/><origin xyz="0 0 -0.065"/></joint>
+  <link name="left_finger">
+    <visual><origin xyz="0 0 -0.05"/><geometry><box size="0.022 0.012 0.10"/></geometry><material name="dark"/></visual>
+    <collision><origin xyz="0 0 -0.05"/><geometry><box size="0.022 0.012 0.10"/></geometry></collision>
+  </link>
+  <joint name="tool0_to_left_finger" type="fixed"><parent link="tool0"/><child link="left_finger"/><origin xyz="0 0.036 0"/></joint>
+  <link name="right_finger">
+    <visual><origin xyz="0 0 -0.05"/><geometry><box size="0.022 0.012 0.10"/></geometry><material name="dark"/></visual>
+    <collision><origin xyz="0 0 -0.05"/><geometry><box size="0.022 0.012 0.10"/></geometry></collision>
+  </link>
+  <joint name="tool0_to_right_finger" type="fixed"><parent link="tool0"/><child link="right_finger"/><origin xyz="0 -0.036 0"/></joint>
+  <ros2_control name="Ur5eMujocoSystem" type="system">
+    <hardware>
+      <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
+      <param name="mujoco_model">$(find ur5e_mujoco_sim)/models/ur5e_robotiq_scene.xml</param>
+      <param name="initial_keyframe">ur5e/home</param>
+      <param name="sim_speed_factor">1.0</param>
+      <param name="headless">false</param>
+    </hardware>
+    <joint name="shoulder_pan_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">-1.5708</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="shoulder_lift_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">-1.5708</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="elbow_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">1.5708</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="wrist_1_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">-1.5708</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="wrist_2_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">-1.5708</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="wrist_3_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+    <joint name="gripper_joint">
+      <command_interface name="position"/>
+      <state_interface name="position"><param name="initial_value">0.0</param></state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+  <link name="gripper_link"/>
+  <joint name="gripper_joint" type="revolute">
+    <parent link="tool0"/><child link="gripper_link"/>
+    <axis xyz="1 0 0"/><limit lower="0.0" upper="0.8" effort="5.0" velocity="1.0"/>
+  </joint>
+</robot>

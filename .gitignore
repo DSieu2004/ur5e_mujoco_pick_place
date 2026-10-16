@@ -1,0 +1,12 @@
+# ROS 2 / colcon generated output
+/build/
+/install/
+/log/
+
+# Local MuJoCo compiled model cache
+/mjmodel.mjb
+
+# Local editor and Python cache files
+/.vscode/
+__pycache__/
+*.py[cod]
