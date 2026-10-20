@@ -27,4 +27,5 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 install(PROGRAMS src/pick_place.py DESTINATION lib/${PROJECT_NAME} RENAME pick_place)
+install(DIRECTORY src/pick_place_lib DESTINATION lib/${PROJECT_NAME})
 ament_package()

@@ -105,28 +105,44 @@
     <!-- Bàn đặt trụ robot -->
     <geom name="main_table" type="box" pos="0.3 0 0.2" size="0.8 0.7 0.25" rgba="0.6 0.5 0.4 1" friction="1 0.005 0.0001"/>
 
-    <!-- Cube is centered at z=0.48 m; pick and tray centers are separated by 0.40 m. -->
+    <!-- Five 6 cm cubes start on the tabletop with clearance between them. -->
     <body name="red_box" pos="0.50 -0.25 0.48">
         <freejoint/>
         <geom type="box" size="0.03 0.03 0.03" rgba="1 0 0 1" mass="0.1" friction="1 0.005 0.0001"/>
     </body>
+    <body name="green_box" pos="0.40 -0.30 0.48">
+        <freejoint/>
+        <geom type="box" size="0.03 0.03 0.03" rgba="0.1 0.8 0.2 1" mass="0.1" friction="1 0.005 0.0001"/>
+    </body>
+    <body name="yellow_box" pos="0.60 -0.30 0.48">
+        <freejoint/>
+        <geom type="box" size="0.03 0.03 0.03" rgba="1 0.8 0.05 1" mass="0.1" friction="1 0.005 0.0001"/>
+    </body>
+    <body name="orange_box" pos="0.45 -0.18 0.48">
+        <freejoint/>
+        <geom type="box" size="0.03 0.03 0.03" rgba="1 0.35 0.05 1" mass="0.1" friction="1 0.005 0.0001"/>
+    </body>
+    <body name="purple_box" pos="0.55 -0.18 0.48">
+        <freejoint/>
+        <geom type="box" size="0.03 0.03 0.03" rgba="0.55 0.2 0.8 1" mass="0.1" friction="1 0.005 0.0001"/>
+    </body>
 
-    <!-- Tray center is 0.40 m from the cube; its floor rests on the tabletop. -->
+    <!-- Enlarged 0.50 x 0.36 m tray: slots leave room for the gripper. -->
     <body name="blue_tray" pos="0.50 0.15 0.45">
         <geom name="blue_tray_floor" type="box" pos="0 0 0.01"
-              size="0.09 0.09 0.01" rgba="0.05 0.25 0.9 1"
+              size="0.25 0.18 0.01" rgba="0.05 0.25 0.9 1"
               friction="1 0.005 0.0001"/>
-        <geom name="blue_tray_wall_x_pos" type="box" pos="0.08 0 0.05"
-              size="0.01 0.09 0.05" rgba="0.05 0.25 0.9 1"
+        <geom name="blue_tray_wall_x_pos" type="box" pos="0.24 0 0.05"
+              size="0.01 0.18 0.05" rgba="0.05 0.25 0.9 1"
               friction="1 0.005 0.0001"/>
-        <geom name="blue_tray_wall_x_neg" type="box" pos="-0.08 0 0.05"
-              size="0.01 0.09 0.05" rgba="0.05 0.25 0.9 1"
+        <geom name="blue_tray_wall_x_neg" type="box" pos="-0.24 0 0.05"
+              size="0.01 0.18 0.05" rgba="0.05 0.25 0.9 1"
               friction="1 0.005 0.0001"/>
-        <geom name="blue_tray_wall_y_pos" type="box" pos="0 0.08 0.05"
-              size="0.07 0.01 0.05" rgba="0.05 0.25 0.9 1"
+        <geom name="blue_tray_wall_y_pos" type="box" pos="0 0.16 0.05"
+              size="0.23 0.01 0.05" rgba="0.05 0.25 0.9 1"
               friction="1 0.005 0.0001"/>
-        <geom name="blue_tray_wall_y_neg" type="box" pos="0 -0.08 0.05"
-              size="0.07 0.01 0.05" rgba="0.05 0.25 0.9 1"
+        <geom name="blue_tray_wall_y_neg" type="box" pos="0 -0.16 0.05"
+              size="0.23 0.01 0.05" rgba="0.05 0.25 0.9 1"
               friction="1 0.005 0.0001"/>
     </body>
 
@@ -293,6 +309,6 @@
     <position name="gripper_joint" joint="gripper_joint" kp="100" kv="10" ctrlrange="0 0.8" forcerange="-5 5"/>
   </actuator>
   <keyframe>
-    <key name="ur5e/home" qpos="0.50 -0.25 0.48 1 0 0 0 -1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0 0 0 0 0 0 0 0" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0"/>
+    <key name="ur5e/home" qpos="0.50 -0.25 0.48 1 0 0 0 0.40 -0.30 0.48 1 0 0 0 0.60 -0.30 0.48 1 0 0 0 0.45 -0.18 0.48 1 0 0 0 0.55 -0.18 0.48 1 0 0 0 -1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0 0 0 0 0 0 0 0" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0"/>
   </keyframe>
 </mujoco>
