@@ -19,9 +19,7 @@ from .config import (
     CUBE_SIZE,
     FREE_JOINT_STATES_TOPIC,
     OBJECT_NAMES,
-    TABLE_TOP_Z,
     TOOL_LINK,
-    TRAY_XY,
 )
 
 
@@ -145,7 +143,7 @@ class PlanningSceneMixin:
             rows[b].enabled[a] = True
 
         allow_pair("main_table", "base_link")
-        for object_name in OBJECT_NAMES:
+        for object_name in self.object_names:
             allow_pair(object_name, "left_finger")
             allow_pair(object_name, "right_finger")
         # The simplified URDF housing box overlaps the wrist_1 collision proxy
@@ -156,7 +154,7 @@ class PlanningSceneMixin:
         # that attached geometry at the first lift waypoint, so explicitly
         # allow this intended support contact. At placement the cube must be
         # able to reach the tray floor before the gripper releases it.
-        for object_name in OBJECT_NAMES:
+        for object_name in self.object_names:
             allow_pair(object_name, "main_table")
             allow_pair(object_name, "blue_tray_floor")
 

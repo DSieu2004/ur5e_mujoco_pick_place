@@ -1,0 +1,19 @@
+{
+  "architecture": "YOLO11n",
+  "classes": [
+    "box"
+  ],
+  "seed": 2702026,
+  "images": 600,
+  "epochs_requested": 45,
+  "image_size": 416,
+  "metrics": {
+    "metrics/precision(B)": 1.0,
+    "metrics/recall(B)": 0.995919489665458,
+    "metrics/mAP50(B)": 0.995,
+    "metrics/mAP50-95(B)": 0.9822341263757481,
+    "fitness": 0.9822341263757481
+  },
+  "label_method": "MuJoCo segmentation, MSAA off, largest connected component",
+  "scope": "MuJoCo RGB images of single-layer 6 cm cubes; not trained for real hardware"
+}

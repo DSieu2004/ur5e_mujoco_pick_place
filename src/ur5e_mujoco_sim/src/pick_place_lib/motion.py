@@ -6,7 +6,8 @@ from copy import deepcopy
 import rclpy
 from action_msgs.msg import GoalStatus
 from control_msgs.action import FollowJointTrajectory, GripperCommand
-from geometry_msgs.msg import Pose, PoseStamped
+from rclpy.executors import ExternalShutdownException
+from geometry_msgs.msg import PoseStamped
 from moveit_msgs.msg import (
     Constraints,
     JointConstraint,
@@ -19,7 +20,6 @@ from moveit_msgs.srv import (
     GetPlanningScene,
     GetPositionIK,
 )
-from shape_msgs.msg import SolidPrimitive
 
 from .config import (
     GRASP_ORIENTATIONS,
@@ -33,11 +33,21 @@ from .config import (
 )
 
 
+class CartesianPathBlocked(RuntimeError):
+    """A collision/kinematic boundary prevented further Cartesian planning."""
+
+
 class MotionMixin:
     @staticmethod
     def _wait_for_server(client, label, timeout):
         if not client.wait_for_server(timeout_sec=timeout):
-            raise RuntimeError(f"Timed out waiting for {label}")
+            raise RuntimeError(
+                f"Timed out after {timeout:.0f} s waiting for {label}. "
+                "Start 'ros2 launch ur5e_mujoco_sim mujoco.launch.xml' "
+                "in another terminal and keep it running. Check "
+                "'ros2 control list_controllers -c /controller_manager'; "
+                "ur5e_controller and gripper_controller must be active."
+            )
 
     @staticmethod
     def _wait_for_service(client, label, timeout):
@@ -63,7 +73,8 @@ class MotionMixin:
         pose = PoseStamped()
         pose.header.frame_id = "world"
         pose.pose.position.x, pose.pose.position.y, pose.pose.position.z = position
-        pose.pose.orientation.w, pose.pose.orientation.x, pose.pose.orientation.y, pose.pose.orientation.z = orientation
+        (pose.pose.orientation.w, pose.pose.orientation.x,
+         pose.pose.orientation.y, pose.pose.orientation.z) = orientation
         return pose
 
     def current_robot_state(self):
@@ -366,14 +377,20 @@ class MotionMixin:
         if response.fraction <= 0.0:
             return 0.0
         if response.fraction < min_fraction:
-            raise RuntimeError(
+            raise CartesianPathBlocked(
                 f"Cartesian {stage} path achieved {response.fraction:.1%}; "
                 f"required {min_fraction:.0%}; MoveIt error code "
                 f"{response.error_code.val}"
             )
         trajectory = response.solution.joint_trajectory
         if not trajectory.points:
-            raise RuntimeError(f"MoveIt returned an empty Cartesian {stage} trajectory")
+            raise CartesianPathBlocked(f"MoveIt returned an empty Cartesian {stage} trajectory")
+        last = trajectory.points[-1].time_from_start
+        if len(trajectory.points) < 2 or last.sec + last.nanosec * 1e-9 <= 0:
+            # MoveIt can report a small positive fraction while returning only
+            # its zero-time start state at a collision/IK boundary. That is no
+            # movement, not an executable timed trajectory.
+            return 0.0
         self.execute_arm_trajectory(trajectory, stage)
         return response.fraction
 
@@ -413,7 +430,7 @@ class MotionMixin:
                         "accepting the near-complete Cartesian motion"
                     )
                     return
-                raise RuntimeError(
+                raise CartesianPathBlocked(
                     f"Cartesian {stage} made no progress at "
                     f"{cumulative_fraction:.1%}; tool0 is estimated to remain "
                     f"{remaining_distance:.3f} m from target"
@@ -432,31 +449,44 @@ class MotionMixin:
             if fraction >= 0.999 or cumulative_fraction >= completion_fraction:
                 return
             if fraction < 0.001:
-                raise RuntimeError(
+                raise CartesianPathBlocked(
                     f"Cartesian {stage} made no measurable progress; "
                     f"tool0 remains {remaining_distance:.3f} m from target"
                 )
 
         remaining_distance = math.dist(current_position, target_position)
-        raise RuntimeError(
+        raise CartesianPathBlocked(
             f"Cartesian {stage} stopped {remaining_distance:.3f} m from its target "
             f"after {max_segments} continuation segments"
         )
 
     def execute_arm_trajectory(self, trajectory, stage):
+        self.trajectory_recorder.begin(stage, trajectory)
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = trajectory
-        goal_future = self.arm_action.send_goal_async(goal)
-        goal_handle = self._wait_for_future(goal_future, f"{stage} goal acceptance", 10.0)
-        if not goal_handle.accepted:
-            raise RuntimeError(f"ros2_control rejected the {stage} trajectory")
-        wrapped = self._wait_for_future(
-            goal_handle.get_result_async(), f"{stage} trajectory", 120.0
-        )
-        if wrapped.status != GoalStatus.STATUS_SUCCEEDED:
-            raise RuntimeError(
-                f"ros2_control {stage} failed: {wrapped.result.error_string}"
+        result_label = "failed"
+        goal_handle = None
+        try:
+            goal_future = self.arm_action.send_goal_async(goal)
+            goal_handle = self._wait_for_future(goal_future, f"{stage} goal acceptance", 10.0)
+            if not goal_handle.accepted:
+                raise RuntimeError(f"ros2_control rejected the {stage} trajectory")
+            wrapped = self._wait_for_future(
+                goal_handle.get_result_async(), f"{stage} trajectory", 120.0
             )
+            if wrapped.status != GoalStatus.STATUS_SUCCEEDED:
+                raise RuntimeError(
+                    f"ros2_control {stage} failed: {wrapped.result.error_string}"
+                )
+            result_label = "succeeded"
+        except (KeyboardInterrupt, ExternalShutdownException):
+            result_label = "interrupted"
+            if goal_handle is not None and self.node.context.ok():
+                cancel = goal_handle.cancel_goal_async()
+                rclpy.spin_until_future_complete(self.node, cancel, timeout_sec=1.0)
+            raise
+        finally:
+            self.trajectory_recorder.end(result_label)
 
     def set_gripper(self, opened):
         position = 0.0 if opened else 0.8
@@ -469,7 +499,13 @@ class MotionMixin:
         )
         if not handle.accepted:
             raise RuntimeError("Gripper controller rejected the command")
-        wrapped = self._wait_for_future(handle.get_result_async(), "gripper result", 20.0)
+        try:
+            wrapped = self._wait_for_future(handle.get_result_async(), "gripper result", 20.0)
+        except (KeyboardInterrupt, ExternalShutdownException):
+            if self.node.context.ok():
+                cancel = handle.cancel_goal_async()
+                rclpy.spin_until_future_complete(self.node, cancel, timeout_sec=1.0)
+            raise
         result = wrapped.result
         if wrapped.status != GoalStatus.STATUS_SUCCEEDED:
             raise RuntimeError(f"Gripper action failed with status {wrapped.status}")

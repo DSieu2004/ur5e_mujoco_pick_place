@@ -1,71 +1,118 @@
-# UR5e Robotiq pick-and-place in MuJoCo
+# UR5e Pick and Place — MuJoCo + ROS 2
 
-The MJCF in `src/ur5e_mujoco_sim/models/ur5e_robotiq_scene.xml` contains the
-UR5e, Robotiq gripper, table, five colored cubes, and enlarged blue tray.
-`mujoco_ros2_control` exposes the simulated arm and gripper to `ros2_control`;
-MoveIt 2 plans collision-aware arm trajectories. The task reads each cube's
-live MuJoCo pose, picks and places the cubes one at a time, verifies the
-released pose, and returns the arm home after all five are in the tray.
+Mô phỏng robot **UR5e + Robotiq**, gắn camera **RealSense D435i RGB-D** ở cổ tay,
+tự phát hiện hộp bằng **YOLO11n**, gắp và đặt vào khay bằng **MoveIt 2**.
+Sáu khớp được điều khiển bằng **effort PID ở 100 Hz** qua `ros2_control`.
 
-## Build
+- Camera xác định vị trí 3D từ RGB, depth và TF; chế độ vision không đọc vị trí hộp từ MuJoCo.
+- Robot giữ hướng kẹp xuống, kiểm tra va chạm và xác nhận kết quả bằng camera sau mỗi lần đặt.
+- Khay có **8 ô**; chương trình dừng khi khay đầy hoặc không có đường đi hợp lệ.
+- Có đồ thị góc đặt/góc thực, sai số, mô-men điều khiển và bài thử đáp ứng bước PID.
+
+## Cài đặt và build
+
+Môi trường đã kiểm chứng: **Ubuntu 22.04, ROS 2 Humble, Python 3.10**, desktop có giao diện đồ họa.
+Cần cài ROS 2 Humble, `rosdep`, `colcon` và `python3-venv` trước.
 
 ```bash
-cd /home/dinhsieu/ur5e_pick_place_ws
+git clone https://github.com/DSieu2004/ur5e_mujoco_pick_place.git ur5e_pick_place_ws
+cd ur5e_pick_place_ws
 source /opt/ros/humble/setup.bash
 rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install --packages-select ur5e_mujoco_sim
+CMAKE_BUILD_PARALLEL_LEVEL=2 colcon build --symlink-install \
+  --packages-up-to ur5e_mujoco_sim --allow-overriding mujoco_ros2_control \
+  --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo
 source install/setup.bash
+
+python3 -m venv --system-site-packages .venv-vision
+.venv-vision/bin/python -m pip install -r requirements-vision.txt
 ```
 
-## Run
+Build cả hai package bằng `--packages-up-to` để sử dụng driver MuJoCo đã sửa lỗi
+shutdown trong workspace. Lần cấu hình đầu có thể tải dependency từ Internet.
+Trọng số YOLO đã được cung cấp trong [box_detector.pt](src/ur5e_mujoco_sim/models/box_detector.pt).
 
-Terminal 1 starts MuJoCo, MoveIt, and the controllers:
+## Chạy tự động bằng camera
+
+Từ thư mục workspace:
 
 ```bash
-cd /home/dinhsieu/ur5e_pick_place_ws
 source /opt/ros/humble/setup.bash
 source install/setup.bash
+ros2 launch ur5e_mujoco_sim vision_pick_place.launch.py
+```
+
+Lệnh này mở mô phỏng, camera preview, bộ điều khiển, MoveIt và tác vụ gắp–đặt.
+Scene mặc định có **7 hộp**. Đóng cửa sổ MuJoCo hoặc nhấn `Ctrl+C` để dừng.
+
+| Launch argument | Chức năng |
+|---|---|
+| `preview:=false` | Tắt cửa sổ camera preview |
+| `run_task:=false` | Chỉ mở mô phỏng và camera |
+| `device:=0` | Chạy YOLO trên CUDA GPU; mặc định là CPU |
+| `confidence:=0.40` | Ngưỡng phát hiện YOLO |
+| `scene:=/absolute/path/scene.xml` | Dùng scene khác |
+| `vision_python:=/absolute/path/python` | Dùng Python environment khác |
+
+Để thử 8 hộp, tạo scene rồi chạy trong một phiên mô phỏng mới:
+
+```bash
+.venv-vision/bin/python src/ur5e_mujoco_sim/tools/generate_box_scene.py \
+  --count 8 --seed 23 --output vision_data/scenes/eight_boxes.xml
+ros2 launch ur5e_mujoco_sim vision_pick_place.launch.py \
+  scene:="$PWD/vision_data/scenes/eight_boxes.xml"
+```
+
+## Đáp ứng PID
+
+Dừng phiên mô phỏng đang chạy rồi mở bài thử riêng:
+
+```bash
+ros2 launch ur5e_mujoco_sim pid_response.launch.py
+```
+
+Bài thử lần lượt áp bước **0.05 rad** lên sáu khớp và trở về home.
+Đồ thị hiển thị đáp ứng, sai số và mô-men `u`; kết quả có **Rise Time**,
+**Overshoot**, **Settling Time** và **Steady-State Error**.
+Dữ liệu lấy từ bộ điều khiển thực trong mô phỏng; mô hình Python PID chỉ dùng tham chiếu offline.
+
+CSV, đồ thị PNG/SVG, kết quả kiểm tra và dữ liệu camera được lưu riêng theo từng lần
+chạy trong `trajectory_runs/`. Thư mục này cùng build output, Python environment
+và dữ liệu huấn luyện được bỏ qua bởi Git.
+
+## Chế độ cũ
+
+Chế độ này gắp năm hộp bằng vị trí đọc trực tiếp từ mô phỏng. Mở hai terminal
+đã source ROS và workspace:
+
+```bash
+# Terminal 1: chọn một trong hai launch
 ros2 launch ur5e_mujoco_sim mujoco.launch.xml
-```
+# Hoặc điều khiển effort PID:
+# ros2 launch ur5e_mujoco_sim mujoco_pid.launch.xml
 
-Wait for `joint_state_broadcaster`, `ur5e_controller`, and
-`gripper_controller` to become active and for `move_group` to load OMPL.
-Then run the task in terminal 2:
-
-```bash
-cd /home/dinhsieu/ur5e_pick_place_ws
-source /opt/ros/humble/setup.bash
-source install/setup.bash
+# Terminal 2
 ros2 run ur5e_mujoco_sim pick_place
 ```
 
-For each cube, the task approaches, descends to grasp, raises once to the
-transport height, moves above its assigned tray slot, descends and opens the
-gripper, then raises once to clear the tray before continuing to the next cube.
-It verifies each release from `/mujoco/free_joint_states` and returns home after
-all five placements.
+## Kiểm chứng và phạm vi
 
-Descent, lift, tray transport, and retreat use collision-checked Cartesian
-paths that preserve the grasp orientation. If MoveIt returns a partial path,
-the task executes that segment and continues from its endpoint, rather than
-requiring the entire path to succeed in one request. Wrist joints may move as
-required by the UR5e kinematics, while Cartesian continuation avoids a sudden
-wrist reconfiguration at a pose-planning fallback.
-
-Check controller state and the cube pose topic with:
+Các lần kiểm chứng ngày 27/10/2026 đạt **7/7 và 8/8 hộp**, hoàn thành bài thử PID
+sáu khớp và **12/12 kiểm thử shutdown**. Bộ kiểm tra hồi quy có 8 bài:
 
 ```bash
-ros2 control list_controllers -c /controller_manager
-ros2 topic echo /joint_states --once
-ros2 topic echo /mujoco/free_joint_states
+.venv-vision/bin/python -m pytest src/ur5e_mujoco_sim/test/test_project_regressions.py -q
 ```
 
-## Scene coordinates
+Project hiện được kiểm chứng với **hộp lập phương 6 cm, một lớp, trong vùng bàn quy định**.
+Camera và depth là mô phỏng; triển khai trên robot thật cần hiệu chuẩn và kiểm chứng thêm.
+Mô hình YOLO được fine-tune bằng ảnh tổng hợp, chưa được kiểm chứng với ảnh camera thật.
 
-The tabletop top is at `z=0.45 m`. Five cubes with 6 cm sides start near
-`x=0.40–0.60 m`, `y=-0.30–-0.18 m`, centered at `z=0.48 m`. The blue tray is
-centered at `(0.50, 0.15, 0.45) m`; its outer footprint is `0.50 x 0.36 m`,
-its wall tops are at `z=0.55 m`, and its floor top is `z=0.47 m`. The robot base
-is at `(0, 0, 0.45) m`, with the same 180-degree yaw in URDF and MuJoCo.
-`tool0` is aligned to the Robotiq pinch site. The task transports each cube
-with its center at `z=0.63 m`, which clears the tray walls at `z=0.55 m`.
+## Mã nguồn và upstream
+
+- [ur5e_mujoco_sim](src/ur5e_mujoco_sim/): scene, cấu hình, vision, quy trình gắp–đặt và PID.
+- [mujoco_ros2_control](src/mujoco_ros2_control/UPSTREAM.md): driver upstream 0.1.2 cùng bản sửa vòng đời luồng/plugin khi shutdown.
+- [MoveGroup](src/ur5e_mujoco_sim/native/UPSTREAM.md): executable dựa trên MoveIt 2 Humble, sửa thứ tự giải phóng plugin.
+- [D435i](src/ur5e_mujoco_sim/models/realsense_d435i/UPSTREAM.md): nguồn mesh và giấy phép của mô hình camera.
+
+Các thông báo bản quyền và giấy phép upstream được giữ trong những thư mục tương ứng.

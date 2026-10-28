@@ -62,6 +62,11 @@
     </default>
   </default>
   <asset>
+    <texture name="blue_checker" type="2d" builtin="checker" mark="edge"
+             rgb1="0.08 0.20 0.32" rgb2="0.24 0.41 0.57"
+             markrgb="0.43 0.61 0.76" width="512" height="512"/>
+    <material name="blue_checker_floor" texture="blue_checker"
+              texuniform="true" texrepeat="4 4" reflectance="0.08"/>
     <material name="ur5e/black" class="ur5e/ur5e" rgba="0.033000000000000002 0.033000000000000002 0.033000000000000002 1"/>
     <material name="ur5e/jointgray" class="ur5e/ur5e" rgba="0.27800000000000002 0.27800000000000002 0.27800000000000002 1"/>
     <material name="ur5e/linkgray" class="ur5e/ur5e" rgba="0.81999999999999995 0.81999999999999995 0.81999999999999995 1"/>
@@ -101,7 +106,8 @@
   </asset>
   <worldbody>
     <light name="//unnamed_light_0" class="/" directional="true" pos="0 0 1.5" dir="0 0 -1"/>
-    <geom name="floor" class="/" type="plane" size="0 0 0.050000000000000003" rgba="0.25 0.29999999999999999 0.34999999999999998 1"/>
+    <geom name="floor" class="/" type="plane" size="0 0 0.050000000000000003"
+          material="blue_checker_floor"/>
     <!-- Bàn đặt trụ robot -->
     <geom name="main_table" type="box" pos="0.3 0 0.2" size="0.8 0.7 0.25" rgba="0.6 0.5 0.4 1" friction="1 0.005 0.0001"/>
 

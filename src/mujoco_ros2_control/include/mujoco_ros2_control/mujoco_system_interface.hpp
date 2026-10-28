@@ -1,0 +1,370 @@
+/**
+ * Copyright (c) 2025, United States Government, as represented by the
+ * Administrator of the National Aeronautics and Space Administration.
+ *
+ * All rights reserved.
+ *
+ * This software is licensed under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+
+#pragma once
+
+#include <memory>
+#include <string>
+#include <thread>
+#include <vector>
+
+#include <hardware_interface/version.h>
+#include <hardware_interface/handle.hpp>
+#include <hardware_interface/hardware_info.hpp>
+#include <hardware_interface/system_interface.hpp>
+#include <hardware_interface/types/hardware_interface_return_values.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <rclcpp/macros.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp>
+#include <rclcpp_lifecycle/state.hpp>
+#include <realtime_tools/realtime_publisher.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
+
+#include <mujoco/mujoco.h>
+
+#include "mujoco_ros2_control/data.hpp"
+#include "mujoco_ros2_control/mujoco_simulation.hpp"
+
+#include <pluginlib/class_list_macros.hpp>
+#include <pluginlib/class_loader.hpp>
+#include "mujoco_ros2_control_plugins/mujoco_ros2_control_plugins_base.hpp"
+#include "transmission_interface/transmission.hpp"
+#include "transmission_interface/transmission_interface_exception.hpp"
+#include "transmission_interface/transmission_loader.hpp"
+
+#define ROS_DISTRO_HUMBLE (HARDWARE_INTERFACE_VERSION_MAJOR < 3)
+
+// defining these for Humble, because they are defined elsewhere in future versions, and we use them in this file
+#if ROS_DISTRO_HUMBLE
+namespace hardware_interface
+{
+/// Constant defining torque interface name
+constexpr char HW_IF_TORQUE[] = "torque";
+/// Constant defining force interface name
+constexpr char HW_IF_FORCE[] = "force";
+}  // namespace hardware_interface
+#endif
+
+namespace mujoco_ros2_control
+{
+/// ros2_control `<sensor>` parameter key selecting which MuJoCo sensor mapping to build.
+constexpr char MUJOCO_TYPE_PARAM[] = "mujoco_type";
+/// Optional `<sensor>` parameter key overriding the MJCF sensor name; defaults to the sensor's own name.
+constexpr char MUJOCO_SENSOR_NAME_PARAM[] = "mujoco_sensor_name";
+
+/// Force/torque sensor: reads a paired MJCF `force` + `torque` sensor.
+constexpr char MUJOCO_TYPE_FTS[] = "fts";
+/// IMU: reads a paired MJCF `framequat` + `gyro` + `accelerometer` sensor.
+constexpr char MUJOCO_TYPE_IMU[] = "imu";
+/// Site pose: reads a paired MJCF `framepos` + `framequat` sensor.
+constexpr char MUJOCO_TYPE_POSE[] = "pose";
+/// Magnetometer: reads a single MJCF `magnetometer` sensor.
+constexpr char MUJOCO_TYPE_MAGNETOMETER[] = "magnetometer";
+
+class MujocoSystemInterface : public hardware_interface::SystemInterface
+{
+public:
+  /**
+   * @brief ros2_control SystemInterface to wrap Mujocos Simulate application.
+   *
+   * Supports Actuators and Force Torque/IMU Sensors in ROS 2 simulations.
+   * For more information on configuration refer to the docs, check the comment strings below, and refer to
+   * the example in the test folder.
+   */
+  MujocoSystemInterface();
+  ~MujocoSystemInterface() override;
+
+  hardware_interface::CallbackReturn
+// Jazzy introduces a new HarwareComponentInterfaceParams object which doesn't exist in humble. This adds
+// compatibility by switching to the old interface, which behaves similarly
+#if ROS_DISTRO_HUMBLE
+  on_init(const hardware_interface::HardwareInfo& info) override;
+#else
+  on_init(const hardware_interface::HardwareComponentInterfaceParams& params) override;
+#endif
+  std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
+  std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
+
+  hardware_interface::CallbackReturn on_activate(const rclcpp_lifecycle::State& previous_state) override;
+  hardware_interface::CallbackReturn on_deactivate(const rclcpp_lifecycle::State& previous_state) override;
+
+  hardware_interface::return_type perform_command_mode_switch(const std::vector<std::string>& start_interfaces,
+                                                              const std::vector<std::string>& stop_interfaces) override;
+
+  hardware_interface::return_type read(const rclcpp::Time& time, const rclcpp::Duration& period) override;
+  hardware_interface::return_type write(const rclcpp::Time& time, const rclcpp::Duration& period) override;
+
+// In humble this method doesn't exist, so we just add it back in with the implementation
+#if ROS_DISTRO_HUMBLE
+  const hardware_interface::HardwareInfo& get_hardware_info() const
+  {
+    return info_;
+  }
+#endif
+  /**
+   * @brief Converts actuator states to joint states.
+   *
+   * This method reads the current states of the actuators in the MuJoCo simulation and updates the corresponding joint
+   * states in the ROS 2 control interface either through transmissions or directly.
+   */
+  void actuator_state_to_joint_state();
+
+  /**
+   * @brief Converts joint commands to actuator commands.
+   *
+   * This method takes the command inputs for the joints from the ROS 2 control interface and translates them into
+   * appropriate commands for the actuators in the MuJoCo simulation, considering any loaded transmissions or directly.
+   */
+  void joint_command_to_actuator_command();
+
+  /**
+   * @brief Returns a copy of the MuJoCo model.
+   *
+   * This method locks the simulation mutex to ensure thread safety.
+   * @param dest Pointer to an mjModel structure where the copy will be stored. The pointer will be allocated if it is nullptr.
+   */
+  void get_model(mjModel*& dest);
+
+  /**
+   * @brief Returns a copy of the current MuJoCo data.
+   *
+   * This method locks the simulation mutex to ensure thread safety.
+   * @param dest Pointer to an mjData structure where the copy will be stored. The pointer will be allocated if it is nullptr.
+   */
+  void get_data(mjData*& dest);
+
+  /**
+   * @brief Sets the MuJoCo data to the provided value.
+   *
+   * This method locks the simulation mutex to ensure thread safety.
+   * @param mj_data Pointer to an mjData structure containing the new data.
+   */
+  void set_data(mjData* mj_data);
+
+protected:
+  rclcpp::Logger get_logger() const;
+
+private:
+  /**
+   * @brief Loads actuator information from MuJoCo model into the SystemInterface.
+   *
+   * This function reads the actuator definitions from the MuJoCo model and initializes their corresponding
+   * state and command information of the actuator handles.
+   */
+  bool register_mujoco_actuators();
+
+  /**
+   * @brief Loads actuator information into the HW interface.
+   *
+   * Will pull joint/actuator information from the provided HardwareInfo, and map it to the appropriate
+   * actuator in the sim's mujoco data. The data wrappers will be used as control/state interfaces for
+   * the HW interface.
+   */
+  void register_urdf_joints(const hardware_interface::HardwareInfo& info);
+
+  /**
+   * @brief Loads transmission information into the HW interface.
+   *
+   * Will pull transmission information from the provided HardwareInfo, and map it to the appropriate
+   * joints/actuators in the sim's mujoco data. This is primarily used to have cases where the URDF
+   * specifies the transmission ratios between joints and physical actuators.
+   */
+  bool register_transmissions(const hardware_interface::HardwareInfo& info);
+
+  bool initialize_initial_positions(const hardware_interface::HardwareInfo& info);
+
+  /**
+   * @brief Constructs all sensor data containers for the interface
+   *
+   * Pulls sensors (FTS, IMUs, poses, and magnetometers) out of the HardwareInfo and uses it to map relevant data containers
+   * in the ros2_control interface. There are expectations on the naming of sensors in both the MJCF and
+   * the ros2_control xacro, as MuJoCo does not have direct support for either of these sensors.
+   *
+   * For a FTS named <FTS>, we add both a `force` and `torque` sensor to the MJCF as:
+   *
+   *  <sensor>
+   *    <force name="<FTS>_force" site="ft_frame"/>
+   *    <torque name="<FTS>_torque" site="ft_frame"/>
+   *  </sensor>
+   *
+   * In the ROS 2 control xacro, these must be mapped to a state interface called `<FTS>_fts`, so,
+   *
+   *  <sensor name="<FTS>_fts">
+   *    <state_interface name="force.x"/>
+   *    <state_interface name="force.y"/>
+   *    <state_interface name="force.z"/>
+   *    <state_interface name="torque.x"/>
+   *    <state_interface name="torque.y"/>
+   *    <state_interface name="torque.z"/>
+   *    <param name="frame_id">fts_sensor</param>
+   *  </sensor>
+   *
+   * The HW interface will map the state interfaces accordingly. Similarly for an IMU named <IMU>, we
+   * must add three separate sensors to the MJCF, update the site/obj accordingly:
+   *
+   *  <sensor>
+   *    <framequat name="<IMU>_quat" objtype="site" objname="obj_imu" />
+   *    <gyro name="<IMU>_gyro" site="obj_imu" />
+   *    <accelerometer name="<IMU>_accel" site="obj_imu" />
+   *  </sensor>
+   *
+   * These can be mapped with the following xacro (note the `_imu` suffix):
+   *
+   *  <sensor name="<IMU>_imu">
+   *    <state_interface name="orientation.x"/>
+   *    <state_interface name="orientation.y"/>
+   *    <state_interface name="orientation.z"/>
+   *    <state_interface name="orientation.w"/>
+   *    <state_interface name="angular_velocity.x"/>
+   *    <state_interface name="angular_velocity.y"/>
+   *    <state_interface name="angular_velocity.z"/>
+   *    <state_interface name="linear_acceleration.x"/>
+   *    <state_interface name="linear_acceleration.y"/>
+   *    <state_interface name="linear_acceleration.z"/>
+   *  </sensor>
+   */
+  void register_sensors(const hardware_interface::HardwareInfo& info);
+
+  /**
+   * @brief Sets the initial simulation conditions (pos, vel, ctrl) values from provided filepath.
+   *
+   * @param override_start_position_file filepath that contains starting positions
+   * @return success of reading the file and setting the positions
+   */
+  bool set_override_start_positions(const std::string& override_start_position_file);
+
+  /**
+   * @brief Set the initial pose for all actuators if provided in the URDF.
+   */
+  void set_initial_pose();
+
+  /**
+   * @brief Resets the simulation state to the initial configuration.
+   *
+   * This method resets all joints to their initial positions and velocities,
+   * resets all free bodies (objects) to their spawned positions, and updates
+   * all actuator and joint command/state interfaces.
+   *
+   * @note This method assumes the sim_mutex_ is already held by the caller.
+   * @note Simulation time (mj_data_->time) is preserved to maintain ROS clock continuity.
+   */
+  void reset_simulation_state(bool fill_initial_state);
+
+  /// Get the node of the MuJoCoSystemInterface.
+  /**
+   * \return node of the MuJoCoSystemInterface.
+   */
+  rclcpp::Node::SharedPtr get_node() const;
+
+  /// Load plugins based on ROS parameters.
+  /**
+   * This method looks for parameters under the "mujoco_plugins" namespace, and attempts to load plugins based on the
+   * unique keys found there. For example, if a parameter "mujoco_plugins.my_plugin.some_param" is found, this method
+   * will attempt to load a plugin with the key "my_plugin". The plugins should be specified in the ROS parameter server
+   * before the system interface is initialized, and should follow the naming convention described above.
+   */
+  void load_mujoco_plugins();
+
+  /**
+   * Helper functions to load plugins that have been specified in legacy ways, but aren't explicitly loaded.
+   * For example, camera support was moved from the core hardware interface to a plugin method in
+   * https://github.com/ros-controls/mujoco_ros2_control/pull/211, but to ensure we don't break existing
+   * seems we conditionally load the camera plugin and translate hardware interface configs to the relevant
+   * node parameters.
+   *
+   * TODO: Remove this once the camera / lidar xacro support have been officially removed.
+   */
+  bool auto_register_plugin_if_needed(const std::string& plugin_type, const std::string& plugin_ns,
+                                      const std::vector<std::string>& loaded_plugins);
+  void load_legacy_cameras(const std::vector<std::string>& plugins_ns);
+  void load_legacy_lidar(const std::vector<std::string>& plugins_ns);
+
+  // Logger
+  rclcpp::Logger logger_ = rclcpp::get_logger("MujocoSystemInterface");
+
+  // Loaders must outlive every ROS node, executor and simulation object below.
+  // Callback groups retain weak_ptr control blocks allocated in plugin DSOs;
+  // unloading those DSOs before the groups die makes their deleters invalid.
+  // Members are destroyed in reverse declaration order.
+  std::unique_ptr<pluginlib::ClassLoader<transmission_interface::TransmissionLoader>> transmission_loader_ = nullptr;
+  std::unique_ptr<pluginlib::ClassLoader<mujoco_ros2_control_plugins::MuJoCoROS2ControlPluginBase>> plugin_loader_ =
+      nullptr;
+
+  // The simulation host: owns the Simulate app, model/data, physics & UI threads,
+  // clock publisher, and reset/pause/step services.
+  std::unique_ptr<MujocoSimulation> simulation_;
+
+  // Provides access to ROS interfaces for elements that require it
+  std::shared_ptr<rclcpp::Node> mujoco_node_;
+  std::unique_ptr<rclcpp::executors::MultiThreadedExecutor> executor_;
+  std::thread executor_thread_;
+
+  // Actuators state publisher
+  std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::JointState>> actuator_state_publisher_ = nullptr;
+  realtime_tools::RealtimePublisher<sensor_msgs::msg::JointState>::SharedPtr actuator_state_realtime_publisher_ =
+      nullptr;
+  sensor_msgs::msg::JointState actuator_state_msg_;
+
+  // Floating base state publisher
+  std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Odometry>> floating_base_publisher_ = nullptr;
+  realtime_tools::RealtimePublisher<nav_msgs::msg::Odometry>::SharedPtr floating_base_realtime_publisher_ = nullptr;
+  nav_msgs::msg::Odometry floating_base_msg_;
+
+  // Free joint data
+  int free_joint_id_ = -1;
+  int free_joint_qpos_adr_ = -1;
+  int free_joint_qvel_adr_ = -1;
+
+  // Data containers for the HW interface
+  std::unordered_map<std::string, hardware_interface::ComponentInfo> joint_hw_info_;
+  std::unordered_map<std::string, std::vector<hardware_interface::ComponentInfo>> sensors_hw_info_;
+
+  // Container for interacting with the underlying physics sim's data.
+  // Handed to plugins during `write` and used to stage control inputs.
+  // Its full-data refresh is skipped when no plugins are loaded.
+  mjData* mj_data_control_{ nullptr };
+
+  // Per-step robot state snapshot used by `read` and `write`.
+  MujocoSimulation::ControlState control_state_;
+
+  // Data containers for the MuJoCo Actuators
+  std::vector<MuJoCoActuatorData> mujoco_actuator_data_;
+
+  // Data containers for the URDF joints
+  std::vector<URDFJointData> urdf_joint_data_;
+
+  // Transmission instances
+  std::vector<std::shared_ptr<transmission_interface::Transmission>> transmission_instances_;
+
+  // Plugin loader and instances
+  std::vector<std::shared_ptr<mujoco_ros2_control_plugins::MuJoCoROS2ControlPluginBase>> plugin_instances_;
+
+  std::vector<FTSensorData> ft_sensor_data_;
+  std::vector<IMUSensorData> imu_sensor_data_;
+  std::vector<SitePoseData> pose_sensor_data_;
+  std::vector<MagnetometerSensorData> magnetometer_sensor_data_;
+
+  bool override_mujoco_actuator_positions_{ false };
+  bool override_urdf_joint_positions_{ false };
+
+  std::string initial_keyframe_ = "";
+};
+
+}  // namespace mujoco_ros2_control

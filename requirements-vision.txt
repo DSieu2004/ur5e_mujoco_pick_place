@@ -1,0 +1,7 @@
+# Install into .venv-vision with --system-site-packages for ROS 2 Humble.
+numpy==1.26.4
+opencv-python==4.11.0.86
+torch==2.5.1
+torchvision==0.20.1
+ultralytics==8.3.228
+mujoco==3.16.0

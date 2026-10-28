@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<robot name="ur5e" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="mujoco_model" default="$(find ur5e_mujoco_sim)/models/ur5e_robotiq_vision_scene.xml"/>
+  <xacro:include filename="$(find ur5e_mujoco_sim)/config/ur5e_pid.urdf"/>
+  <!-- Compact eye-in-hand saddle on the wrist flange, above the gripper body.
+       The camera is only 68 mm off the tool axis. Its long side spans the jaws;
+       the front looks along tool0 +Z. The support stays behind the camera face. -->
+  <link name="wrist_camera_bracket">
+    <inertial><origin xyz="0.025 0 -0.158"/><mass value="0.040"/>
+      <inertia ixx="0.000025" iyy="0.000040" izz="0.000040" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual><origin xyz="0 0 -0.153"/><geometry><cylinder radius="0.044" length="0.012"/></geometry>
+      <material name="camera_bracket_dark"><color rgba="0.15 0.15 0.15 1"/></material>
+    </visual>
+    <visual><origin xyz="0.048 0 -0.162"/><geometry><box size="0.025 0.056 0.024"/></geometry>
+      <material name="camera_bracket_dark"/>
+    </visual>
+    <visual><origin xyz="0.068 0 -0.174"/><geometry><box size="0.028 0.096 0.008"/></geometry>
+      <material name="camera_bracket_dark"/>
+    </visual>
+    <collision><origin xyz="0.068 0 -0.174"/><geometry><box size="0.028 0.096 0.008"/></geometry></collision>
+  </link>
+  <joint name="tool0_to_camera_bracket" type="fixed">
+    <parent link="tool0"/><child link="wrist_camera_bracket"/>
+  </joint>
+  <link name="wrist_camera_link">
+    <inertial><origin xyz="0 0 -0.0125"/><mass value="0.072"/>
+      <inertia ixx="0.0000075" iyy="0.00005235" izz="0.00005235" ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <collision><origin xyz="0 0 -0.0125"/><geometry><box size="0.09 0.025 0.025"/></geometry></collision>
+    <xacro:macro name="camera_part" params="index color">
+      <visual><geometry><mesh filename="package://ur5e_mujoco_sim/models/realsense_d435i/assets/d435i_${index}.obj"/></geometry>
+        <material name="camera_${index}"><color rgba="${color}"/></material>
+      </visual>
+    </xacro:macro>
+    <xacro:camera_part index="0" color="0.0356 0.0356 0.0356 1"/>
+    <xacro:camera_part index="1" color="0.287 0.665 0.328 1"/>
+    <xacro:camera_part index="2" color="0.80 0.81 0.80 1"/>
+    <xacro:camera_part index="3" color="0.036 0.036 0.036 1"/>
+    <xacro:camera_part index="4" color="0.296 0.296 0.296 1"/>
+    <xacro:camera_part index="5" color="0.07 0.07 0.07 1"/>
+    <xacro:camera_part index="6" color="0.07 0.07 0.07 1"/>
+    <xacro:camera_part index="7" color="0.087 0.003 0.009 1"/>
+    <xacro:camera_part index="8" color="1 1 1 1"/>
+  </link>
+  <joint name="tool0_to_wrist_camera" type="fixed">
+    <parent link="tool0"/><child link="wrist_camera_link"/><origin xyz="0.068 0 -0.145" rpy="0 0 1.5707963267948966"/>
+  </joint>
+  <link name="wrist_camera_color_optical_frame"/>
+  <joint name="wrist_camera_optical_joint" type="fixed">
+    <parent link="wrist_camera_link"/><child link="wrist_camera_color_optical_frame"/>
+    <origin xyz="0.0325 0 0.001"/>
+  </joint>
+</robot>

@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<robot name="ur5e" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="$(find ur5e_mujoco_sim)/config/ur5e.srdf"/>
+  <!-- The camera back is bolted against its rigid saddle plate. Keep collision
+       checks against every moving arm link and all external scene geometry. -->
+  <disable_collisions link1="wrist_camera_link" link2="wrist_camera_bracket" reason="Adjacent"/>
+</robot>

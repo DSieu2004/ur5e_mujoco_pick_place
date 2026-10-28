@@ -1,0 +1,11 @@
+/**:
+  ros__parameters:
+    mujoco_plugins:
+      wrist_camera:
+        type: mujoco_ros2_control_plugins/CameraPlugin
+        camera_publish_rate: 5.0
+        wrist_camera:
+          frame_name: wrist_camera_color_optical_frame
+          info_topic: /wrist_camera/color/camera_info
+          image_topic: /wrist_camera/color/image_raw
+          depth_topic: /wrist_camera/aligned_depth_to_color/image_raw

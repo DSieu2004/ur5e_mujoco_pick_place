@@ -2,3 +2,10 @@ build/
 install/
 log/
 .vscode/
+__pycache__/
+trajectory_runs/
+.venv-vision/
+vision_data/
+vision_runs/
+.pytest_cache/
+runs/
