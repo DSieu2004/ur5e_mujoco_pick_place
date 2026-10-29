@@ -9,6 +9,13 @@ Sáu khớp được điều khiển bằng **effort PID ở 100 Hz** qua `ros2_
 - Khay có **8 ô**; chương trình dừng khi khay đầy hoặc không có đường đi hợp lệ.
 - Có đồ thị góc đặt/góc thực, sai số, mô-men điều khiển và bài thử đáp ứng bước PID.
 
+## Sơ đồ hệ thống điều khiển
+
+Luồng từ waypoint Cartesian đến điều khiển mô-men khớp, với phản hồi vị trí/vận tốc
+và nhánh điều khiển vị trí riêng cho kẹp Robotiq.
+
+![UR5e pick-and-place control architecture: motion planning, time parameterization, joint PID, feedback and gripper control](docs/images/control-architecture.png)
+
 ## Cài đặt và build
 
 Môi trường đã kiểm chứng: **Ubuntu 22.04, ROS 2 Humble, Python 3.10**, desktop có giao diện đồ họa.
