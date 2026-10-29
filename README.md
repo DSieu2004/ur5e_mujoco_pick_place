@@ -76,6 +76,11 @@ Bài thử lần lượt áp bước **0.05 rad** lên sáu khớp và trở v�
 **Overshoot**, **Settling Time** và **Steady-State Error**.
 Dữ liệu lấy từ bộ điều khiển thực trong mô phỏng; mô hình Python PID chỉ dùng tham chiếu offline.
 
+Đáp ứng bám quỹ đạo PID trong quá trình gắp–đặt: cột trái là góc đặt và góc thực,
+cột giữa là sai số, cột phải là mô-men điều khiển `u` của sáu khớp.
+
+![UR5e PID tracking response: setpoint, measured position, tracking error and control torque](docs/images/pid-tracking-response.png)
+
 CSV, đồ thị PNG/SVG, kết quả kiểm tra và dữ liệu camera được lưu riêng theo từng lần
 chạy trong `trajectory_runs/`. Thư mục này cùng build output, Python environment
 và dữ liệu huấn luyện được bỏ qua bởi Git.
